@@ -102,18 +102,23 @@ export default function BarItoPage() {
     setFormOpen(true);
   };
 
+  const getString = (form: FormData, key: string): string => {
+    const value = form.get(key);
+    return typeof value === "string" ? value.trim() : "";
+  };
+
   const saveReservation = async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const payload = {
       fecha: form.get("fecha"),
       hermano: form.get("hermano"),
-      titular: form.get("titular").trim(),
-      tipo: form.get("tipo").trim() || "Reunión Familiar",
-      estado: form.get("estado"),
-      hora_inicio: form.get("hora_inicio"),
-      hora_fin: form.get("hora_fin"),
-      notas: form.get("notas").trim(),
+      titular: getString(form, "titular"),
+      tipo: getString(form, "tipo") || "Reunión Familiar",
+      estado: getString(form, "estado"),
+      hora_inicio: getString(form, "hora_inicio"),
+      hora_fin: getString(form, "hora_fin"),
+      notas: getString(form, "notas"),
     };
 
     const occupied = reservations.find((r) => r.fecha === payload.fecha && String(r.id) !== String(editing?.id));
@@ -292,7 +297,7 @@ export default function BarItoPage() {
             <label className="field-label">Hora Inicio<input name="hora_inicio" type="time" defaultValue={editing?.hora_inicio || "14:00"} className="field-input" /></label>
             <label className="field-label">Hora Fin<input name="hora_fin" type="time" defaultValue={editing?.hora_fin || "22:00"} className="field-input" /></label>
           </div>
-          <label className="field-label">Notas adicionales<textarea name="notas" rows="2" defaultValue={editing?.notas || ""} className="field-input resize-none" placeholder="Observaciones..." /></label>
+          <label className="field-label">Notas adicionales<textarea name="notas" defaultValue={editing?.notas || ""} className="field-input resize-none" placeholder="Observaciones..." /></label>
           <div className="flex justify-end gap-3 pt-2"><button type="button" onClick={() => setFormOpen(false)} className="px-4 py-2.5 rounded-xl bg-[#252834] text-gray-300 text-sm">Cancelar</button><button disabled={saving} className="px-5 py-2.5 rounded-xl gold-bg text-black font-bold text-sm disabled:opacity-50">{saving ? "Guardando..." : "Guardar Reserva"}</button></div>
         </form>
       </Modal>}
