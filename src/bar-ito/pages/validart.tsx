@@ -132,18 +132,9 @@ export default function ValidarReservaModal({
 
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
         <button
-          color="default"
-          onClick={onClose}
-          disabled={loading}
-        >
-          Cancelar
-        </button>
-
-        <button
-          color="primary"
           onClick={handleSubmit}
           disabled={pin.length !== 4 || loading}
-          className="font-semibold"
+          className="w-full sm:col-span-3 py-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white font-bold text-xs"
         >
           Validar reserva
         </button>
