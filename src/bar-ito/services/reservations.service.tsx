@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { ReservationPayload } from '../pages/reservations';
 const { VITE_ODOO_API_URL } = import.meta.env;
 
 export const reservationsService = {
@@ -9,8 +10,8 @@ export const reservationsService = {
     if (hasta) params.set("hasta", hasta);
     return axios.get(`${VITE_ODOO_API_URL}/bar-ito/reservas/?${params.toString()}`);
   },
-  create: (payload) => axios.post(`${VITE_ODOO_API_URL}/bar-ito/reservas/`, payload),
-  update: (id: number, payload) => axios.put(`${VITE_ODOO_API_URL}/bar-ito/reservas/${id}`, payload),
+  create: (payload: ReservationPayload) => axios.post(`${VITE_ODOO_API_URL}/bar-ito/reservas/`, payload),
+  update: (id: number, payload: ReservationPayload) => axios.put(`${VITE_ODOO_API_URL}/bar-ito/reservas/${id}`, payload),
   remove: (id: number) => axios.delete(`${VITE_ODOO_API_URL}/bar-ito/reservas/${id}`),
-  validar: (id: number, pin) => axios.post(`${VITE_ODOO_API_URL}/bar-ito/reservas/${id}/validar?pin=${pin}`),
+  validar: (id: number, pin: string) => axios.post(`${VITE_ODOO_API_URL}/bar-ito/reservas/${id}/validar?pin=${pin}`),
 };

@@ -1,25 +1,97 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent, MouseEvent, ReactNode } from "react";
 import { FAMILY, MONTHS, EMPTY_RESERVATION } from "../constants/family";
 import { reservationsService } from "../services/reservations.service";
-import "../bar-ito.css"
+import "../bar-ito.css";
 import ValidarReservaModal from "./validart";
 
-const pad = (n) => String(n).padStart(2, "0");
-const toISODate = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-const dateFromISO = (value) => {
-  const [y, m, d] = value.split("-").map(Number);
-  return new Date(y, m - 1, d);
+interface ReservationValidation {
+  id: number;
+  usuario?: string | null;
+  user_id: number | string;
+  created_at: string;
+}
+
+interface Reservation {
+  id: number;
+  fecha: string;
+  hermano: string;
+  titular: string;
+  tipo: string | null;
+  estado: string;
+  hora_inicio: string;
+  hora_fin: string;
+  notas: string | null;
+  validaciones?: ReservationValidation[] | null;
+}
+
+type ReservationForm = Omit<Reservation, "id" | "validaciones"> & {
+  id?: number | null;
 };
-const formatDate = (value) => {
+
+interface ReservationPayload {
+  fecha: string;
+  hermano: string;
+  titular: string;
+  tipo: string;
+  estado: string;
+  hora_inicio: string;
+  hora_fin: string;
+  notas: string;
+}
+
+interface ModalProps {
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}
+
+interface DetailItem {
+  label: string;
+  value: string;
+}
+
+const pad = (n: number): string => String(n).padStart(2, "0");
+
+const toISODate = (date: Date): string =>
+  `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+
+const dateFromISO = (value: string): Date => {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const formatDate = (value: string): string => {
   const date = dateFromISO(value);
   return `${date.getDate()} de ${MONTHS[date.getMonth()]}, ${date.getFullYear()}`;
 };
-const dateKey = (value) => {
-  const [y, m, d] = value.split("-");
-  return `${Number(y)}-${Number(m) - 1}-${Number(d)}`;
+
+const getString = (form: FormData, key: string): string => {
+  const value = form.get(key);
+  return typeof value === "string" ? value.trim() : "";
 };
 
-function Modal({ children, onClose, wide = false }) {
+const getErrorMessage = (error: unknown): string => {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = error.response;
+    if (typeof response === "object" && response !== null && "data" in response) {
+      const data = response.data;
+      if (typeof data === "object" && data !== null && "detail" in data) {
+        const detail = data.detail;
+        if (typeof detail === "string") return detail;
+        if (detail != null) return JSON.stringify(detail) ?? "Ocurrió un error inesperado.";
+      }
+    }
+  }
+
+  return error instanceof Error ? error.message : "Ocurrió un error inesperado.";
+};
+
+function Modal({ children, onClose, wide = false }: ModalProps) {
+  const stopPropagation = (event: MouseEvent<HTMLDivElement>): void => {
+    event.stopPropagation();
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4 overflow-y-auto"
@@ -28,7 +100,7 @@ function Modal({ children, onClose, wide = false }) {
       <div
         className={`bg-[#16181d] border border-amber-500/40 rounded-2xl w-full ${wide ? "max-w-5xl" : "max-w-xl"
           } p-5 sm:p-6 shadow-2xl animate-pop-in relative my-8`}
-        onMouseDown={(e) => e.stopPropagation()}
+        onMouseDown={stopPropagation}
       >
         {children}
       </div>
@@ -37,82 +109,98 @@ function Modal({ children, onClose, wide = false }) {
 }
 
 export default function BarItoPage() {
-  const [currentMonth, setCurrentMonth] = useState(() => {
+  const [currentMonth, setCurrentMonth] = useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [reservations, setReservations] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  const [detail, setDetail] = useState(null);
-  const [editing, setEditing] = useState(null);
-  const [search, setSearch] = useState("");
-  const [familyFilter, setFamilyFilter] = useState("todos");
-  const [toast, setToast] = useState("");
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
+  const [formOpen, setFormOpen] = useState<boolean>(false);
+  const [detail, setDetail] = useState<Reservation | null>(null);
+  const [editing, setEditing] = useState<ReservationForm | null>(null);
+  const [search, setSearch] = useState<string>("");
+  const [familyFilter, setFamilyFilter] = useState<string>("todos");
+  const [toast, setToast] = useState<string>("");
+  const [open, setOpen] = useState<boolean>(false);
 
-  const [open, setOpen] = useState(false);
-
-  const loadReservations = useCallback(async () => {
+  const loadReservations = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError("");
     try {
       const first = toISODate(currentMonth);
       const lastDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-      const result = await reservationsService.list({ desde: first, hasta: toISODate(lastDate) });
-      setReservations(Array.isArray(result) ? result : result.data || []);
-    } catch (err) {
-      setError(err.message);
+      const result: unknown = await reservationsService.list({
+        desde: first,
+        hasta: toISODate(lastDate),
+      });
+
+      if (Array.isArray(result)) {
+        setReservations(result as Reservation[]);
+      } else if (
+        typeof result === "object" &&
+        result !== null &&
+        "data" in result &&
+        Array.isArray(result.data)
+      ) {
+        setReservations(result.data as Reservation[]);
+      } else {
+        setReservations([]);
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [currentMonth, formOpen]);
+  }, [currentMonth]);
 
-  useEffect(() => { loadReservations(); }, [loadReservations]);
+  useEffect(() => {
+    void loadReservations();
+  }, [loadReservations]);
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 3000);
-    return () => clearTimeout(timer);
+    const timer = window.setTimeout(() => setToast(""), 3000);
+    return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const reservationsByDate = useMemo(
-    () => Object.fromEntries(reservations.map((r) => [r.fecha, r])),
-    [reservations]
+  const reservationsByDate = useMemo<Record<string, Reservation>>(
+    () => Object.fromEntries(reservations.map((reservation) => [reservation.fecha, reservation])),
+    [reservations],
   );
 
-  const agenda = useMemo(() => {
+  const agenda = useMemo<Reservation[]>(() => {
     const term = search.trim().toLocaleLowerCase();
     return [...reservations]
-      .filter((r) => familyFilter === "todos" || r.hermano === familyFilter)
-      .filter((r) => !term || (r.titular || "").toLocaleLowerCase().includes(term) || (r.tipo || "").toLocaleLowerCase().includes(term))
+      .filter((reservation) => familyFilter === "todos" || reservation.hermano === familyFilter)
+      .filter(
+        (reservation) =>
+          !term ||
+          (reservation.titular || "").toLocaleLowerCase().includes(term) ||
+          (reservation.tipo || "").toLocaleLowerCase().includes(term),
+      )
       .sort((a, b) => a.fecha.localeCompare(b.fecha));
   }, [reservations, search, familyFilter]);
 
-  const openNew = (fecha = toISODate(new Date())) => {
-    setEditing({ ...EMPTY_RESERVATION, fecha });
+  const openNew = (fecha: string = toISODate(new Date())): void => {
+    setEditing({ ...EMPTY_RESERVATION, fecha } as ReservationForm);
     setFormOpen(true);
     setDetail(null);
   };
 
-  const openEdit = (reservation) => {
+  const openEdit = (reservation: Reservation): void => {
     setEditing({ ...EMPTY_RESERVATION, ...reservation });
     setDetail(null);
     setFormOpen(true);
   };
 
-  const getString = (form: FormData, key: string): string => {
-    const value = form.get(key);
-    return typeof value === "string" ? value.trim() : "";
-  };
-
-  const saveReservation = async (event) => {
+  const saveReservation = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const payload = {
-      fecha: form.get("fecha"),
-      hermano: form.get("hermano"),
+    const payload: ReservationPayload = {
+      fecha: getString(form, "fecha"),
+      hermano: getString(form, "hermano"),
       titular: getString(form, "titular"),
       tipo: getString(form, "tipo") || "Reunión Familiar",
       estado: getString(form, "estado"),
@@ -121,7 +209,11 @@ export default function BarItoPage() {
       notas: getString(form, "notas"),
     };
 
-    const occupied = reservations.find((r) => r.fecha === payload.fecha && String(r.id) !== String(editing?.id));
+    const occupied = reservations.find(
+      (reservation) =>
+        reservation.fecha === payload.fecha &&
+        String(reservation.id) !== String(editing?.id ?? ""),
+    );
     if (occupied && !window.confirm(`El día ya tiene una reserva de ${occupied.titular}.`)) return;
 
     setSaving(true);
@@ -135,38 +227,36 @@ export default function BarItoPage() {
       setEditing(null);
       setToast("Reserva guardada correctamente");
       await loadReservations();
-    } catch (err) {
-      const detail = err.response?.data?.detail;
-      alert(detail);
-      setError(
-        typeof detail === "string"
-          ? detail
-          : detail
-            ? JSON.stringify(detail)
-            : err.message
-      );
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      window.alert(message);
+      setError(message);
     } finally {
       setSaving(false);
     }
   };
 
-  const deleteReservation = async () => {
+  const deleteReservation = async (): Promise<void> => {
     if (!detail || !window.confirm(`¿Cancelar la reserva de ${detail.titular}?`)) return;
     try {
       await reservationsService.remove(detail.id);
       setDetail(null);
       setToast("Reserva eliminada");
       await loadReservations();
-    } catch (err) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
     }
   };
 
-  const shareWhatsApp = () => {
+  const shareWhatsApp = (): void => {
     if (!detail) return;
     const status = detail.estado === "apartado" ? "🔴 *APARTADO*" : "🟠 *SOLICITUD PENDIENTE*";
     const message = `🎉 *RESERVA BAR ITO* 🎉\n${status}\n\n🗓 *Fecha:* ${formatDate(detail.fecha)}\n⏰ *Horario:* ${detail.hora_inicio} a ${detail.hora_fin}\n👤 *Titular / Reserva:* ${detail.titular}\n👨‍👩‍👧‍👦 *Hermano Responsable:* ${detail.hermano}\n🎈 *Evento:* ${detail.tipo || "Reunión Familiar"}\n${detail.notas ? `📝 *Notas:* ${detail.notas}\n` : ""}\n_¡Favor de confirmar o revisar en la App de Reservas BAR ITO!_`;
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    window.open(
+      `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`,
+      "_blank",
+      "noopener,noreferrer",
+    );
   };
 
   const year = currentMonth.getFullYear();
@@ -174,6 +264,15 @@ export default function BarItoPage() {
   const offset = (new Date(year, month, 1).getDay() + 6) % 7;
   const days = new Date(year, month + 1, 0).getDate();
   const today = toISODate(new Date());
+
+  const detailItems: DetailItem[] = detail
+    ? [
+      { label: "Fecha", value: formatDate(detail.fecha) },
+      { label: "Hermano Responsable", value: detail.hermano },
+      { label: "Titular / Reservó", value: detail.titular },
+      { label: "Horario", value: `${detail.hora_inicio} - ${detail.hora_fin}` },
+    ]
+    : [];
 
   return (
     <div className="min-h-screen bg-[#0c0d0e] text-gray-100 pb-12">
@@ -339,12 +438,7 @@ export default function BarItoPage() {
             {/* Información de la reserva */}
             <div>
               <div className="space-y-3 bg-[#0d0e11] p-4 rounded-xl border border-[#232530] text-sm mb-5">
-                {[
-                  ["Fecha", formatDate(detail.fecha)],
-                  ["Hermano Responsable", detail.hermano],
-                  ["Titular / Reservó", detail.titular],
-                  ["Horario", `${detail.hora_inicio} - ${detail.hora_fin}`],
-                ].map(([label, value]) => (
+                {detailItems.map(({ label, value }) => (
                   <div
                     key={label}
                     className="flex justify-between gap-3 border-b border-[#1e2029] pb-2"
@@ -381,8 +475,8 @@ export default function BarItoPage() {
               </div>
 
               <div className="space-y-2">
-                {detail.validaciones?.length > 0 ? (
-                  detail.validaciones.map((validacion) => (
+                {(detail.validaciones?.length ?? 0) > 0 ? (
+                  detail.validaciones?.map((validacion) => (
                     <div
                       key={validacion.id}
                       className="flex items-center gap-2.5 p-2 rounded-lg bg-[#15171e] border border-[#232530]"
