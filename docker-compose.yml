@@ -1,6 +1,6 @@
 services:
   bar-ito:
-    image: ghcr.io/programadoresphicargo/bar-ito:latest
+    image: bar-ito:latest
     container_name: bar-ito
     restart: unless-stopped
     expose:

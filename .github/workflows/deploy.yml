@@ -1,67 +1,90 @@
 
-name: Deploy Bar-Ito
+name: Desplegar Bar-Ito en VPS
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  packages: write
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      # Construir imagen Docker
+      - name: Build Docker Image
+        run: docker build -f Dockerfile -t bar-ito:latest .
 
-      - name: Login GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      # Guardar imagen en TAR
+      - name: Save Docker Image
+        run: docker save bar-ito:latest -o bar-ito-image.tar
 
-      - name: Build and Push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/programadoresphicargo/bar-ito:latest
+      # Configurar SSH
+      - name: Configurar clave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-      - name: Deploy to Ubuntu
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_PRIVATE_KEY }}
-          script: |
-            mkdir -p /opt/bar-ito
+      # Verificar conexión
+      - name: Verificar conexión SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+          root@${{ secrets.VPS_HOST }} \
+          "echo 'Conexion SSH OK'"
 
-      - name: Copy Compose
-        uses: appleboy/scp-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_PRIVATE_KEY }}
-          source: "docker-compose.yml"
-          target: "/opt/bar-ito"
+      # Crear carpeta
+      - name: Crear carpeta en VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+          root@${{ secrets.VPS_HOST }} \
+          "mkdir -p /root/workspace/bar-ito"
 
-      - name: Restart Container
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USERNAME }}
-          key: ${{ secrets.VPS_PRIVATE_KEY }}
-          script: |
-            cd /opt/bar-ito
-            docker compose pull
+      # Copiar imagen
+      - name: Copiar imagen Docker
+        run: |
+          scp -o StrictHostKeyChecking=no \
+          bar-ito-image.tar \
+          root@${{ secrets.VPS_HOST }}:/root/workspace/bar-ito/
+
+      # Copiar Docker Compose
+      - name: Copiar Docker Compose
+        run: |
+          scp -o StrictHostKeyChecking=no \
+          docker-compose.yml \
+          root@${{ secrets.VPS_HOST }}:/root/workspace/bar-ito/
+
+      # Desplegar
+      - name: Deploy en VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.VPS_HOST }} << 'EOF'
+            set -e
+
+            WORKDIR=/root/workspace/bar-ito
+
+            echo "1. Verificando archivos..."
+            ls -lh $WORKDIR
+
+            echo "2. Cargando imagen Docker..."
+            docker load -i $WORKDIR/bar-ito-image.tar
+
+            echo "3. Verificando red Docker..."
+            docker network inspect nginx-proxy-network >/dev/null
+
+            echo "4. Iniciando Bar-Ito..."
+            cd $WORKDIR
             docker compose up -d --remove-orphans
-            docker image prune -f
+
+            echo "5. Verificando contenedor..."
+            if [ -z "$(docker ps -q -f name=^bar-ito$)" ]; then
+              docker compose logs --no-color
+              exit 1
+            fi
+
+            echo "Bar-Ito desplegado correctamente."
+            docker ps --filter name=bar-ito
+          EOF
