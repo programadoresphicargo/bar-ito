@@ -177,13 +177,6 @@ export default function BarItoPage() {
 
   return (
     <div className="min-h-screen bg-[#0c0d0e] text-gray-100 pb-12">
-
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <h1 className="text-4xl font-bold text-amber-400">
-          Bar-Ito funcionando
-        </h1>
-      </div>
-
       <header className="sticky top-0 z-20 bg-[#121316]/95 border-b border-[#262830] backdrop-blur-md px-4 py-3 sm:py-4 mb-6 shadow-xl">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-3">
