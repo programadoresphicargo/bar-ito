@@ -514,7 +514,7 @@ export default function BarItoPage() {
             <button
               onClick={() => setOpen(true)}
               disabled={detail.estado === "confirmado" || detail.estado === "cancelado"}
-              className="sm:col-span-3 py-2.5 rounded-xl bg-warning-500 hover:bg-warning-600 text-white font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+              className="sm:col-span-3 py-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white font-bold text-xs"
             >
               Validar reserva
             </button>
