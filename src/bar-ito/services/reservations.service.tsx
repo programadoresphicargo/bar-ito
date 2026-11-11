@@ -1,5 +1,4 @@
 import axios from 'axios';
-// Configura VITE_API_URL en tu .env, por ejemplo: VITE_API_URL=http://localhost:8000
 const { VITE_ODOO_API_URL } = import.meta.env;
 
 export const reservationsService = {
